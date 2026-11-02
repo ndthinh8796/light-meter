@@ -1,0 +1,69 @@
+<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Đo Ánh Sáng Phòng</title><style>
+:root{--bg:#fbf7f0;--ink:#2b2b2b;--mut:#777;--ok:#2e9e5b;--lo:#d98c1f;--hi:#d0473b}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:16px;max-width:520px;margin:auto}
+h1{font-size:22px;margin:4px 0 12px}h2{font-size:17px;margin:0 0 8px}.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px #0001}
+button,select,input{font:inherit;border-radius:10px;border:1px solid #ddd;padding:10px 12px;background:#fff;color:var(--ink)}
+.p{background:#2b2b2b;color:#fff!important;border:0;width:100%;padding:16px;font-weight:700;font-size:18px}.p:disabled{opacity:.5}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}.modes button.on{background:#ffe9c7;border-color:#e8b060;font-weight:600}
+video{width:90px;height:90px;border-radius:12px;background:#000;object-fit:cover;float:right;margin-left:10px}
+ol{padding-left:20px;margin:6px 0}li{margin:4px 0}
+#verdict{font-size:28px;font-weight:800;text-align:center;margin:4px 0}#tone{text-align:center;font-size:18px;margin-bottom:6px}
+.small{font-size:13px;color:var(--mut)}.row{display:flex;gap:8px;align-items:center;margin:8px 0}.row input{flex:1;min-width:0}
+#bar{height:8px;background:#eee;border-radius:4px;overflow:hidden;margin-top:10px}#bar div{height:100%;width:0;background:#e8b060;transition:width .1s}
+#tips li{margin:6px 0}details summary{font-weight:700;cursor:pointer}
+</style></head><body>
+<h1>💡 Đo Ánh Sáng Phòng</h1>
+<div class="card"><h2>1. Bạn định làm gì?</h2><div class="modes" id="modes"></div><div class="small" id="target" style="margin-top:8px"></div></div>
+<div class="card"><h2>2. Chuẩn bị điện thoại</h2><video id="v" playsinline muted></video>
+<ol><li>Đặt <b>một tờ giấy trắng mỏng</b> che camera trước (camera selfie).</li><li><b>Đặt điện thoại nằm phẳng</b> ngay chỗ bạn đọc/làm việc, <b>màn hình ngửa lên</b> hướng về phía đèn.</li><li>Đừng để tay hay đầu che bóng lên điện thoại.</li></ol>
+<div class="row"><select id="cam"><option value="user">Camera trước (khuyên dùng)</option><option value="environment">Camera sau</option></select></div>
+<button class="p" id="go">Đo</button><div id="bar"><div></div></div><div class="small" id="status" style="margin-top:6px">Lần đầu, Safari sẽ hỏi quyền dùng camera — hãy bấm Cho phép.</div></div>
+<div class="card" id="res" hidden><h2>3. Kết quả</h2><div id="verdict"></div><div id="tone"></div>
+<ul id="tips"></ul><div class="small" id="detail"></div></div>
+<div class="card"><details><summary>🔧 Chỉnh độ chính xác (không bắt buộc)</summary>
+<div class="small">Nếu bạn biết chính xác độ sáng hiện tại (ví dụ đo bằng máy đo của bạn bè), nhập số lux sau khi đo xong để app tự điều chỉnh.</div>
+<div class="row"><input id="known" type="number" inputmode="decimal" placeholder="Số lux thật"><button id="cal">Lưu</button><button id="reset">Mặc định</button></div><div class="small" id="calinfo"></div></details></div>
+<div class="card"><details><summary>🏠 Phòng cần đèn mạnh bao nhiêu?</summary>
+<div class="row"><input id="area" type="number" inputmode="decimal" placeholder="Diện tích phòng (m²)"></div><div id="calc" class="small">Nhập diện tích để xem tổng độ sáng đèn cần có (ghi trên vỏ bóng đèn, đơn vị lumen).</div></details></div>
+<div class="card small">⚠️ Lưu ý: kết quả chỉ là <b>ước tính</b>. iPhone không cho web đọc cảm biến ánh sáng, và camera tự chỉnh độ sáng nên số đo có thể lệch khá nhiều. Hãy dùng để so sánh và biết mình đang ở mức “thiếu / vừa / thừa”.</div>
+<script>
+const M={doc:{n:'📖 Đọc sách',lo:300,hi:500,k:[3000,4000],d:'Cần sáng vừa đủ, ánh sáng vàng nhạt đến trắng ấm.'},
+lam:{n:'💻 Làm việc / Tập trung',lo:500,hi:750,k:[4000,5000],d:'Cần sáng rõ, ánh sáng trắng tự nhiên.'},
+thu:{n:'🛋️ Thư giãn',lo:50,hi:150,k:[2400,3000],d:'Ánh sáng dịu, màu vàng ấm.'},
+ngu:{n:'🌙 Chuẩn bị ngủ',lo:0,hi:50,k:[1800,2700],d:'Rất dịu, màu vàng cam, tránh ánh trắng.'}};
+let mode='doc',factor=+localStorage.lf||4,lastRaw=0,stream,busy=false;const $=id=>document.getElementById(id);
+const mb=$('modes');for(const m in M){const b=document.createElement('button');b.textContent=M[m].n;b.dataset.m=m;b.onclick=()=>{mode=m;draw();if(lastRaw)report()};mb.appendChild(b)}
+function draw(){[...mb.children].forEach(b=>b.classList.toggle('on',b.dataset.m==mode));$('target').textContent=M[mode].d;$('calinfo').textContent=localStorage.lf?'Đã chỉnh theo số đo của bạn.':'Đang dùng mức mặc định.';calc()}
+function calc(){const a=+$('area').value,t=M[mode];if(!a)return;const lux=mode=='ngu'?50:(t.lo+t.hi)/2,lm=Math.round(a*lux*1.25);
+$('calc').innerHTML=`Phòng ${a} m² để <b>${t.n.slice(2).trim().toLowerCase()}</b> cần tổng khoảng <b>${lm.toLocaleString('vi-VN')} lumen</b>.<br>Ví dụ: một bóng LED 9W thường khoảng 800 lumen → cần khoảng <b>${Math.max(1,Math.round(lm/800))} bóng</b> như vậy.`}
+$('area').oninput=calc;
+function cct(r,g,b){r/=255;g/=255;b/=255;const f=c=>c>.04045?((c+.055)/1.055)**2.4:c/12.92;r=f(r);g=f(g);b=f(b);
+const X=.4124*r+.3576*g+.1805*b,Y=.2126*r+.7152*g+.0722*b,Z=.0193*r+.1192*g+.9505*b,s=X+Y+Z;if(!s)return 0;const x=X/s,y=Y/s,n=(x-.332)/(.1858-y);return 449*n**3+3525*n**2+6823.3*n+5520.33}
+let lastK=0,lastRGB=[0,0,0];
+async function cam(){const want=$('cam').value;if(stream&&stream.want==want)return;stream&&stream.getTracks().forEach(t=>t.stop());
+stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:want},audio:false});stream.want=want;$('v').srcObject=stream;await $('v').play();await new Promise(r=>setTimeout(r,800))}
+$('go').onclick=async()=>{if(busy)return;busy=true;$('go').disabled=true;try{$('status').textContent='Đang mở camera…';await cam();$('status').textContent='Giữ yên điện thoại… đang đo';
+const c=document.createElement('canvas');c.width=64;c.height=48;const x=c.getContext('2d',{willReadFrequently:true});let S=0,R=0,G=0,B=0,N=0;const t0=performance.now();
+await new Promise(done=>{const tick=()=>{const p=(performance.now()-t0)/3000;$('bar').firstChild.style.width=Math.min(100,p*100)+'%';
+x.drawImage($('v'),0,0,64,48);const d=x.getImageData(0,0,64,48).data,n=d.length/4;let r=0,g=0,b=0,L=0;
+for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];const l=(.2126*d[i]+.7152*d[i+1]+.0722*d[i+2])/255;L+=l<=.04045?l/12.92:((l+.055)/1.055)**2.4}
+S+=L/n;R+=r/n;G+=g/n;B+=b/n;N++;p<1?requestAnimationFrame(tick):done()};tick()});
+lastRaw=S/N*100;lastRGB=[R/N,G/N,B/N];lastK=cct(...lastRGB);report();$('status').textContent='Xong! Bấm Đo lại sau khi thay đổi đèn.';$('go').textContent='Đo lại'}
+catch(e){$('status').textContent='Không mở được camera. Vào Cài đặt › Safari › Camera (hoặc nút “aA” › Cài đặt trang web) để cho phép, rồi tải lại trang.'}
+busy=false;$('go').disabled=false};
+function report(){const t=M[mode],lux=lastRaw*factor,kk=Math.max(1500,Math.min(9000,Math.round(lastK/100)*100));let v,col,tips=[];
+if(lux<t.lo){v='Hơi tối';col='var(--lo)';tips.push(lux<t.lo/2?'Thiếu sáng nhiều: bật thêm một đèn, hoặc dùng bóng mạnh hơn.':'Đưa đèn lại gần chỗ đọc hơn một chút, hoặc bật thêm đèn.');
+if(mode=='doc'||mode=='lam')tips.push('Nên dùng đèn bàn chiếu thẳng xuống trang sách/bàn làm việc.')}
+else if(lux>t.hi){v='Hơi chói';col='var(--hi)';tips.push(mode=='ngu'||mode=='thu'?'Tắt bớt đèn lớn, chỉ để một đèn ngủ hoặc đèn nhỏ.':'Đưa đèn ra xa hơn một chút, hoặc tắt bớt một đèn.');}
+else{v='Vừa đẹp ✓';col='var(--ok)';tips.push('Độ sáng đã ổn, giữ nguyên nhé!')}
+let tone;if(kk<t.k[0]){tone='Ánh sáng hơi vàng';tips.push('Nên đổi sang bóng ánh sáng trắng hơn (trắng ấm hoặc trắng trung tính).')}
+else if(kk>t.k[1]){tone='Ánh sáng hơi trắng/xanh';tips.push(mode=='ngu'||mode=='thu'?'Nên dùng bóng ánh sáng vàng để dễ thư giãn và dễ ngủ hơn.':'Nên đổi sang bóng ánh sáng vàng nhạt / trắng ấm hơn.')}
+else tone='Màu ánh sáng phù hợp ✓';
+if(mode=='doc'||mode=='lam'){tips.push('Đặt đèn chéo một bên (bên trái nếu bạn viết tay phải) để không bị bóng tay.');tips.push('Tránh để đèn chiếu thẳng vào mắt hoặc phản chiếu lên màn hình/giấy bóng.');tips.push('Vẫn nên bật đèn phòng, đừng chỉ để một vùng sáng giữa phòng tối — mắt sẽ nhanh mỏi.')}
+if(mode=='ngu')tips.push('Hạn chế nhìn điện thoại sáng trước khi ngủ.');
+$('res').hidden=false;$('verdict').textContent=v;$('verdict').style.color=col;$('tone').textContent=tone;
+$('tips').innerHTML=tips.map(s=>'<li>'+s+'</li>').join('');$('detail').textContent=`Chi tiết: khoảng ${Math.round(lux)} lux (mục tiêu ${t.lo}–${t.hi}), màu khoảng ${kk}K.`}
+$('cal').onclick=()=>{const k=+$('known').value;if(k>0&&lastRaw>0){factor=k/lastRaw;localStorage.lf=factor;draw();report()}else alert('Hãy bấm Đo trước, rồi nhập số lux.')};
+$('reset').onclick=()=>{delete localStorage.lf;factor=4;draw();if(lastRaw)report()};draw();
+</script></body></html>
